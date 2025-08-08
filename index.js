@@ -1,5 +1,5 @@
 /**
- * 3D Model Magic - A professional React application for AI-powered 3D model generation.
+ * 3D Model Magic - A professional React application for AI-powered 3D model generation
  * Designed to produce Bambu Lab competition-worthy designs with advanced AI capabilities,
  * secure payments, and a slick, modern UI.
  *
