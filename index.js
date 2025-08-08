@@ -1,408 +1,520 @@
+/**
+ * 3D Model Magic - A professional React application for AI-powered 3D model generation.
+ * Designed to produce Bambu Lab competition-worthy designs with advanced AI capabilities,
+ * secure payments, and a slick, modern UI.
+ *
+ * Dependencies (included in index.html or Vite):
+ * - React 17
+ * - Firebase 8.10.1
+ * - Framer Motion 6.5.1
+ * - React Toastify 9.0.8
+ * - Tailwind CSS 2.2.19
+ * - Google Model Viewer
+ * - Google Analytics
+ *
+ * Backend Requirements:
+ * - Netlify Functions or Node.js/Express server with endpoints:
+ *   - /generate: AI model generation
+ *   - /create-checkout-session: Stripe checkout
+ *   - /get-user-plan: Fetch user subscription
+ *   - /get-csrf-token: CSRF protection
+ * - Meshy AI or similar 3D model generation API
+ * - Stripe account with price IDs
+ * - Firebase project for authentication
+ *
+ * Deployment:
+ * - Use Vite to build and host on Netlify/Vercel.
+ * - Replace placeholder URLs and keys (e.g., Firebase config, Stripe price IDs).
+ *
+ * Features:
+ * - Advanced text-to-3D and image-to-3D generation
+ * - Customizable model parameters (material, supports, shell thickness, infill)
+ * - Secure Firebase authentication
+ * - Stripe payments for subscriptions and one-time purchases
+ * - Interactive model gallery with competition-quality examples
+ * - Analytics, accessibility, and security
+ */
+
 import React, { useState, useEffect, useRef } from 'react';
-import ReactDOM from 'react-dom';
+import { createRoot } from 'react-dom/client';
 import firebase from 'firebase/app';
 import 'firebase/auth';
+import { motion, AnimatePresence } from 'framer-motion';
 import { toast, ToastContainer } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
 
-// Firebase config (replace with your Firebase project config)
+// Firebase configuration (replace with your Firebase project details)
 const firebaseConfig = {
-  apiKey: "your-api-key",
-  authDomain: "your-auth-domain",
-  projectId: "your-project-id",
-  storageBucket: "your-storage-bucket",
-  messagingSenderId: "your-messaging-sender-id",
-  appId: "your-app-id"
+  apiKey: "your-firebase-api-key",
+  authDomain: "your-firebase-auth-domain",
+  projectId: "your-firebase-project-id",
+  storageBucket: "your-firebase-storage-bucket",
+  messagingSenderId: "your-firebase-messaging-sender-id",
+  appId: "your-firebase-app-id"
 };
 
 // Initialize Firebase
-firebase.initializeApp(firebaseConfig);
+if (!firebase.apps.length) {
+  firebase.initializeApp(firebaseConfig);
+}
 
-// Google Analytics (assuming gtag.js included in HTML)
+// Google Analytics tracking
 const trackEvent = (category, action, label) => {
-  window.gtag('event', action, { event_category: category, event_label: label });
+  if (window.gtag) {
+    window.gtag('event', action, { event_category: category, event_label: label });
+  }
 };
 
-/**
- * Helper: Validate numeric dimensions
- */
+// Helper: Validate numeric dimension fields
 function validDimension(v) {
   if (!v) return false;
   const n = Number(v);
   return Number.isFinite(n) && n > 0;
 }
 
-/**
- * Sanitize input to prevent XSS
- */
+// Helper: Sanitize input to prevent XSS
 function sanitizeInput(input) {
   return input.replace(/[&<>"']/g, (m) => ({
-    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#x27;'
+    '&': '&amp;',
+    '<': '&lt;',
+    '>': '&gt;',
+    '"': '&quot;',
+    "'": '&#x27;'
   })[m]);
 }
 
-/**
- * Example models for gallery (competition-worthy)
- */
+// Example models for gallery (Bambu Lab competition-worthy)
 const EXAMPLE_MODELS = [
   {
     id: 1,
-    name: "Modular Drone Frame",
+    name: "Intricate Gearbox",
     url: "https://modelviewer.dev/shared-assets/models/Astronaut.glb",
-    desc: "Lightweight, interlocking drone chassis with optimized aerodynamics for Bambu Lab printers.",
-    tags: ["Drone", "Functional", "Bambu Lab"],
+    desc: "A precision-engineered gearbox with interlocking components, optimized for Bambu Lab printers.",
+    tags: ["mechanical", "functional", "engineering"]
   },
   {
     id: 2,
-    name: "Intricate Jewelry Stand",
-    url: "https://modelviewer.dev/shared-assets/models/shader-ball.glb",
-    desc: "Elegant, tree-like stand with fine details, perfect for high-resolution SLA printing.",
-    tags: ["Art", "Decorative", "Bambu Lab"],
+    name: "Sculpted Dragon",
+    url: "https://modelviewer.dev/shared-assets/models/RobotExpressive.glb",
+    desc: "A detailed dragon sculpture with intricate scales, ideal for artistic prints.",
+    tags: ["artistic", "sculpture", "fantasy"]
   },
   {
     id: 3,
-    name: "Robotic Gripper",
-    url: "https://modelviewer.dev/shared-assets/models/RobotExpressive.glb",
-    desc: "Precision-engineered gripper with moving parts, designed for robotic assemblies.",
-    tags: ["Robotics", "Functional", "Bambu Lab"],
+    name: "Modular Shelving Unit",
+    url: "https://modelviewer.dev/shared-assets/models/shader-ball.glb",
+    desc: "A customizable shelving unit with snap-fit connectors for home organization.",
+    tags: ["furniture", "functional", "modular"]
   },
   {
     id: 4,
-    name: "Architectural Facade",
+    name: "Robotic Arm Joint",
     url: "https://modelviewer.dev/shared-assets/models/Astronaut.glb",
-    desc: "Detailed building facade with parametric patterns, ideal for architectural models.",
-    tags: ["Architecture", "Parametric", "Bambu Lab"],
+    desc: "A high-tolerance robotic arm joint for automation projects.",
+    tags: ["mechanical", "robotics", "engineering"]
   },
+  {
+    id: 5,
+    name: "Futuristic Headset",
+    url: "https://modelviewer.dev/shared-assets/models/RobotExpressive.glb",
+    desc: "A sleek, ergonomic headset design for VR/AR applications.",
+    tags: ["electronics", "wearable", "futuristic"]
+  },
+  {
+    id: 6,
+    name: "Ornate Vase",
+    url: "https://modelviewer.dev/shared-assets/models/shader-ball.glb",
+    desc: "An elegant vase with intricate patterns, perfect for decorative prints.",
+    tags: ["artistic", "decor", "home"]
+  },
+  {
+    id: 7,
+    name: "Drone Frame",
+    url: "https://modelviewer.dev/shared-assets/models/Astronaut.glb",
+    desc: "A lightweight, durable drone frame optimized for Bambu Lab’s precision.",
+    tags: ["aerospace", "functional", "engineering"]
+  },
+  {
+    id: 8,
+    name: "Puzzle Cube",
+    url: "https://modelviewer.dev/shared-assets/models/RobotExpressive.glb",
+    desc: "A complex, interlocking puzzle cube for intellectual challenges.",
+    tags: ["puzzle", "recreational", "complex"]
+  },
+  {
+    id: 9,
+    name: "Car Dashboard Mount",
+    url: "https://modelviewer.dev/shared-assets/models/shader-ball.glb",
+    desc: "A robust mount for car dashboards, designed for perfect fit and durability.",
+    tags: ["automotive", "functional", "practical"]
+  },
+  {
+    id: 10,
+    name: "Architectural Miniature",
+    url: "https://modelviewer.dev/shared-assets/models/Astronaut.glb",
+    desc: "A detailed miniature building for architectural visualization.",
+    tags: ["architecture", "artistic", "model"]
+  }
 ];
 
-/**
- * Subscription plans with real Stripe price IDs (replace with actual IDs)
- */
+// Subscription plans with Stripe price IDs (replace with real IDs)
 const PLANS = [
   {
     id: "free",
     title: "Free",
-    desc: "1 model/month, basic preview, no downloads.",
+    desc: "Try one sample model with basic features and preview capabilities.",
     priceLabel: "Free",
     priceId: null,
     color: "bg-gray-700",
     cta: "Get Started",
     disabled: false,
+    features: [
+      "1 model generation/month",
+      "Basic text-to-3D",
+      "GLB export",
+      "Standard preview"
+    ]
   },
   {
     id: "basic",
     title: "Basic",
-    desc: "10 models/month, STL/GLB downloads, standard generation speed.",
+    desc: "10 high-quality models per month, perfect for hobbyists and small projects.",
     priceLabel: "$9 / month",
     priceId: "price_1N9Z8x1234567890",
     color: "bg-yellow-500",
     cta: "Subscribe",
     disabled: false,
+    features: [
+      "10 model generations/month",
+      "Text-to-3D + Image-to-3D",
+      "GLB/OBJ/STL export",
+      "Custom materials",
+      "Print supports"
+    ]
   },
   {
     id: "pro",
     title: "Pro",
-    desc: "Unlimited models, priority generation, advanced parametric options.",
+    desc: "Unlimited models with priority generation, ideal for professionals and competition entries.",
     priceLabel: "$29 / month",
     priceId: "price_1N9Z8y1234567890",
     color: "bg-purple-600",
     cta: "Subscribe",
     disabled: false,
-  },
+    features: [
+      "Unlimited model generations",
+      "Priority AI processing",
+      "Text-to-3D + Image-to-3D",
+      "All export formats",
+      "Advanced materials",
+      "Print supports + shell thickness",
+      "AR/VR preview"
+    ]
+  }
 ];
 
-/**
- * Component: Hero Section
- */
-function HeroSection({ scrollToGenerator }) {
-  return (
-    <section className="relative h-screen flex items-center justify-center bg-black overflow-hidden">
-      <video autoPlay muted loop className="absolute w-full h-full object-cover opacity-60">
-        <source src="https://example.com/3d-model-showcase.mp4" type="video/mp4" />
-      </video>
-      <div className="relative z-10 text-center px-4">
-        <h1 className="text-4xl md:text-6xl lg:text-8xl font-extrabold tracking-tight">
-          <span className="text-transparent bg-clip-text bg-gradient-to-r from-yellow-400 to-purple-600">
-            3D Model Magic
-          </span>
-        </h1>
-        <p className="mt-4 text-lg md:text-2xl max-w-3xl mx-auto text-gray-200">
-          Create award-winning 3D models with AI. Win Bambu Lab competitions with precision, creativity, and ease.
-        </p>
-        <button
-          onClick={scrollToGenerator}
-          className="mt-8 bg-yellow-500 hover:bg-yellow-600 text-black font-bold py-4 px-8 rounded-full transition duration-300 transform hover:scale-105"
-          aria-label="Start creating 3D models"
-        >
-          Create Now
-        </button>
-      </div>
-    </section>
-  );
-}
+// Component: Hero Section
+const HeroSection = () => (
+  <motion.section
+    initial={{ opacity: 0 }}
+    animate={{ opacity: 1 }}
+    transition={{ duration: 1 }}
+    className="relative h-screen flex items-center justify-center bg-black overflow-hidden"
+  >
+    <video
+      autoPlay
+      muted
+      loop
+      className="absolute w-full h-full object-cover opacity-60"
+    >
+      <source src="https://example.com/3d-model-showcase.mp4" type="video/mp4" />
+    </video>
+    <div className="relative z-10 text-center px-4">
+      <motion.h1
+        initial={{ y: 50, opacity: 0 }}
+        animate={{ y: 0, opacity: 1 }}
+        transition={{ duration: 0.8 }}
+        className="text-5xl md:text-7xl font-extrabold tracking-tight"
+      >
+        <span className="text-transparent bg-clip-text bg-gradient-to-r from-yellow-400 to-purple-600">
+          3D Model Magic
+        </span>
+      </motion.h1>
+      <motion.p
+        initial={{ y: 50, opacity: 0 }}
+        animate={{ y: 0, opacity: 1 }}
+        transition={{ duration: 0.8, delay: 0.2 }}
+        className="mt-4 text-xl md:text-2xl max-w-3xl mx-auto"
+      >
+        Create stunning, competition-ready 3D models with AI. Perfect for Bambu Lab designs, from intricate mechanics to artistic sculptures.
+      </motion.p>
+      <motion.button
+        initial={{ y: 50, opacity: 0 }}
+        animate={{ y: 0, opacity: 1 }}
+        transition={{ duration: 0.8, delay: 0.4 }}
+        onClick={() => window.scrollTo({ top: document.getElementById("generator").offsetTop, behavior: "smooth" })}
+        className="mt-6 bg-yellow-500 hover:bg-yellow-600 text-black font-bold py-3 px-8 rounded-full transition duration-300"
+      >
+        Start Creating Now
+      </motion.button>
+    </div>
+  </motion.section>
+);
 
-/**
- * Component: Header
- */
-function Header({ user, userPlan, signOut, setShowSignUp, setShowSignIn }) {
-  return (
-    <header className="sticky top-0 z-50 bg-gray-900 bg-opacity-90 backdrop-blur-sm py-4">
-      <div className="container mx-auto px-4 flex justify-between items-center">
-        <h2 className="text-2xl md:text-3xl font-bold text-yellow-400">3D Model Magic</h2>
-        <nav className="flex items-center space-x-4">
-          <a href="#generator" className="text-gray-300 hover:text-yellow-400 transition duration-200">Generator</a>
-          <a href="#gallery" className="text-gray-300 hover:text-yellow-400 transition duration-200">Gallery</a>
-          <a href="#plans" className="text-gray-300 hover:text-yellow-400 transition duration-200">Plans</a>
-          {user ? (
-            <div className="flex items-center space-x-4">
-              <span className="text-sm text-gray-300">
-                <strong>{user.email}</strong> ({userPlan})
-              </span>
-              <button
-                onClick={signOut}
-                className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg transition duration-200"
-                aria-label="Sign out"
-              >
-                Sign Out
-              </button>
-            </div>
-          ) : (
-            <div className="flex space-x-4">
-              <button
-                onClick={() => { setShowSignUp(true); setShowSignIn(false); }}
-                className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg transition duration-200"
-                aria-label="Sign up"
-              >
-                Sign Up
-              </button>
-              <button
-                onClick={() => { setShowSignIn(true); setShowSignUp(false); }}
-                className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg transition duration-200"
-                aria-label="Sign in"
-              >
-                Sign In
-              </button>
-            </div>
-          )}
-        </nav>
-      </div>
-    </header>
-  );
-}
-
-/**
- * Component: Auth Modal
- */
-function AuthModal({ type, onClose, onSubmit }) {
-  return (
-    <div className="fixed inset-0 z-50 bg-black bg-opacity-70 flex items-center justify-center">
-      <div className="bg-gray-800 p-8 rounded-xl w-full max-w-md shadow-2xl">
-        <h2 className="text-2xl font-bold mb-4">{type === 'signup' ? 'Sign Up' : 'Sign In'}</h2>
-        <form onSubmit={onSubmit} className="space-y-4">
-          <input
-            type="email"
-            name="email"
-            placeholder="Email"
-            className="w-full p-3 rounded-lg text-black focus:outline-none focus:ring-2 focus:ring-yellow-500"
-            required
-            aria-label="Email address"
-          />
-          <input
-            type="password"
-            name="password"
-            placeholder="Password"
-            className="w-full p-3 rounded-lg text-black focus:outline-none focus:ring-2 focus:ring-yellow-500"
-            required
-            aria-label="Password"
-          />
-          <div className="flex justify-end space-x-3">
+// Component: Header
+const Header = ({ user, userPlan, setShowSignUp, setShowSignIn, signOut }) => (
+  <header className="sticky top-0 z-50 bg-gray-900 bg-opacity-90 backdrop-blur-sm py-4">
+    <div className="container mx-auto px-4 flex justify-between items-center">
+      <h2 className="text-2xl font-bold text-yellow-400">3D Model Magic</h2>
+      <div className="flex items-center space-x-4">
+        {user ? (
+          <>
+            <span className="text-sm hidden md:block">
+              Welcome, <strong>{user.email}</strong> ({userPlan})
+            </span>
             <button
-              type="button"
-              onClick={onClose}
-              className="bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded-lg"
-              aria-label="Cancel"
+              onClick={signOut}
+              className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg transition duration-200"
+              aria-label="Sign out"
             >
-              Cancel
+              Sign Out
+            </button>
+          </>
+        ) : (
+          <>
+            <button
+              onClick={() => { setShowSignUp(true); setShowSignIn(false); }}
+              className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg transition duration-200"
+              aria-label="Sign up"
+            >
+              Sign Up
             </button>
             <button
-              type="submit"
-              className={`bg-${type === 'signup' ? 'blue' : 'green'}-600 hover:bg-${type === 'signup' ? 'blue' : 'green'}-700 text-white px-4 py-2 rounded-lg`}
-              aria-label={type === 'signup' ? 'Sign up' : 'Sign in'}
+              onClick={() => { setShowSignIn(true); setShowSignUp(false); }}
+              className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg transition duration-200"
+              aria-label="Sign in"
             >
-              {type === 'signup' ? 'Sign Up' : 'Sign In'}
+              Sign In
             </button>
-          </div>
-        </form>
+          </>
+        )}
       </div>
     </div>
-  );
-}
+  </header>
+);
 
-/**
- * Component: Generator Section
- */
-function GeneratorSection({ generateModel, modelUrl, error, isLoading, userPlan }) {
-  const [prompt, setPrompt] = useState("");
-  const [width, setWidth] = useState("");
-  const [height, setHeight] = useState("");
-  const [depth, setDepth] = useState("");
-  const [material, setMaterial] = useState("plastic");
-  const [supports, setSupports] = useState(false);
-  const [infill, setInfill] = useState(20);
-  const [shellThickness, setShellThickness] = useState(1.2);
-  const [image, setImage] = useState(null);
+// Component: Auth Modal
+const AuthModal = ({ show, onClose, onSubmit, title, buttonText, buttonColor }) => (
+  <AnimatePresence>
+    {show && (
+      <motion.div
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        exit={{ opacity: 0 }}
+        className="fixed inset-0 z-50 bg-black bg-opacity-70 flex items-center justify-center"
+      >
+        <motion.div
+          initial={{ scale: 0.8, opacity: 0 }}
+          animate={{ scale: 1, opacity: 1 }}
+          exit={{ scale: 0.8, opacity: 0 }}
+          className="bg-gray-800 p-8 rounded-xl w-full max-w-md shadow-2xl"
+        >
+          <h2 className="text-2xl font-bold mb-4">{title}</h2>
+          <form onSubmit={onSubmit} className="space-y-4">
+            <input
+              type="email"
+              name="email"
+              placeholder="Email"
+              className="w-full p-3 rounded-lg text-black focus:outline-none focus:ring-2 focus:ring-yellow-500"
+              required
+              aria-label="Email address"
+            />
+            <input
+              type="password"
+              name="password"
+              placeholder="Password"
+              className="w-full p-3 rounded-lg text-black focus:outline-none focus:ring-2 focus:ring-yellow-500"
+              required
+              aria-label="Password"
+            />
+            <div className="flex justify-end space-x-3">
+              <button
+                type="button"
+                onClick={onClose}
+                className="bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded-lg"
+                aria-label="Cancel"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                className={`${buttonColor} hover:${buttonColor.replace("bg-", "bg-opacity-80")} text-white px-4 py-2 rounded-lg`}
+                aria-label={buttonText}
+              >
+                {buttonText}
+              </button>
+            </div>
+          </form>
+        </motion.div>
+      </motion.div>
+    )}
+  </AnimatePresence>
+);
 
-  const handleGenerate = () => {
-    generateModel({
-      prompt,
-      width,
-      height,
-      depth,
-      material,
-      supports,
-      infill,
-      shellThickness,
-      image,
-    });
-  };
+// Component: Generator Section
+const GeneratorSection = ({
+  prompt,
+  setPrompt,
+  width,
+  setWidth,
+  height,
+  setHeight,
+  depth,
+  setDepth,
+  material,
+  setMaterial,
+  supports,
+  setSupports,
+  shellThickness,
+  setShellThickness,
+  infill,
+  setInfill,
+  image,
+  setImage,
+  isLoading,
+  modelUrl,
+  error,
+  generateModel,
+  payForModel,
+  userPlan
+}) => {
+  const fileInputRef = useRef(null);
 
   const handleImageUpload = (e) => {
     const file = e.target.files[0];
-    if (file) {
-      if (file.size > 5 * 1024 * 1024) {
-        toast.error("Image must be under 5MB.");
-        return;
-      }
-      const reader = new FileReader();
-      reader.onload = () => setImage(reader.result);
-      reader.readAsDataURL(file);
-      trackEvent("Generator", "ImageUpload", file.name);
+    if (file && file.type.startsWith('image/')) {
+      setImage(file);
+      toast.info('Image uploaded. Will be used for 3D generation.');
+    } else {
+      toast.error('Please upload a valid image file.');
     }
   };
 
   return (
     <section id="generator" className="py-16 container mx-auto px-4">
-      <h2 className="text-4xl md:text-5xl font-bold text-center mb-8 text-transparent bg-clip-text bg-gradient-to-r from-yellow-400 to-purple-600">
-        Create Competition-Winning 3D Models
-      </h2>
-      <div className="bg-gray-800 p-8 rounded-2xl shadow-xl max-w-5xl mx-auto grid md:grid-cols-2 gap-8">
+      <motion.h2
+        initial={{ y: 50, opacity: 0 }}
+        whileInView={{ y: 0, opacity: 1 }}
+        transition={{ duration: 0.6 }}
+        className="text-4xl font-bold text-center mb-8"
+      >
+        Generate Competition-Ready 3D Models
+      </motion.h2>
+      <motion.div
+        initial={{ y: 50, opacity: 0 }}
+        whileInView={{ y: 0, opacity: 1 }}
+        transition={{ duration: 0.6, delay: 0.2 }}
+        className="bg-gray-800 p-8 rounded-2xl shadow-xl max-w-5xl mx-auto grid md:grid-cols-2 gap-8"
+      >
         {/* Form */}
-        <div className="space-y-6">
-          <div>
-            <label className="block text-sm font-medium mb-1" htmlFor="prompt">Model Description</label>
-            <input
-              id="prompt"
-              type="text"
-              value={prompt}
-              onChange={(e) => setPrompt(e.target.value)}
-              placeholder="e.g., 'modular drone frame with aerodynamic curves'"
-              className="w-full p-3 rounded-lg text-black focus:outline-none focus:ring-2 focus:ring-yellow-500"
-              aria-label="Model description"
-            />
-          </div>
+        <div className="space-y-4">
+          <input
+            type="text"
+            value={prompt}
+            onChange={(e) => setPrompt(e.target.value)}
+            placeholder="Describe your model (e.g., 'intricate gearbox for Bambu Lab')"
+            className="w-full p-3 rounded-lg text-black focus:outline-none focus:ring-2 focus:ring-yellow-500"
+            aria-label="Model description"
+          />
           <div className="grid grid-cols-3 gap-3">
-            <div>
-              <label className="block text-sm font-medium mb-1" htmlFor="width">Width (mm)</label>
-              <input
-                id="width"
-                type="number"
-                value={width}
-                onChange={(e) => setWidth(e.target.value)}
-                placeholder="Width"
-                className={`w-full p-3 rounded-lg text-black focus:outline-none ${!validDimension(width) && width ? "border-2 border-red-500" : "focus:ring-2 focus:ring-yellow-500"}`}
-                aria-label="Width in millimeters"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium mb-1" htmlFor="height">Height (mm)</label>
-              <input
-                id="height"
-                type="number"
-                value={height}
-                onChange={(e) => setHeight(e.target.value)}
-                placeholder="Height"
-                className={`w-full p-3 rounded-lg text-black focus:outline-none ${!validDimension(height) && height ? "border-2 border-red-500" : "focus:ring-2 focus:ring-yellow-500"}`}
-                aria-label="Height in millimeters"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium mb-1" htmlFor="depth">Depth (mm)</label>
-              <input
-                id="depth"
-                type="number"
-                value={depth}
-                onChange={(e) => setDepth(e.target.value)}
-                placeholder="Depth"
-                className={`w-full p-3 rounded-lg text-black focus:outline-none ${!validDimension(depth) && depth ? "border-2 border-red-500" : "focus:ring-2 focus:ring-yellow-500"}`}
-                aria-label="Depth in millimeters"
-              />
-            </div>
-          </div>
-          <div>
-            <label className="block text-sm font-medium mb-1" htmlFor="material">Material</label>
-            <select
-              id="material"
-              value={material}
-              onChange={(e) => setMaterial(e.target.value)}
-              className="w-full p-3 rounded-lg text-black focus:outline-none focus:ring-2 focus:ring-yellow-500"
-              aria-label="Material type"
-            >
-              <option value="plastic">Plastic (PLA/ABS)</option>
-              <option value="metal">Metal (Stainless Steel)</option>
-              <option value="wood">Wood (MDF)</option>
-              <option value="ceramic">Ceramic</option>
-              <option value="resin">Resin (SLA)</option>
-            </select>
-          </div>
-          <div>
-            <label className="block text-sm font-medium mb-1" htmlFor="infill">Infill (%)</label>
             <input
-              id="infill"
               type="number"
-              value={infill}
-              onChange={(e) => setInfill(Math.max(0, Math.min(100, e.target.value)))}
-              placeholder="Infill"
-              className="w-full p-3 rounded-lg text-black focus:outline-none focus:ring-2 focus:ring-yellow-500"
-              aria-label="Infill percentage"
+              value={width}
+              onChange={(e) => setWidth(e.target.value)}
+              placeholder="Width (mm)"
+              className={`p-3 rounded-lg text-black focus:outline-none ${!validDimension(width) && width ? "border-2 border-red-500" : "focus:ring-2 focus:ring-yellow-500"}`}
+              aria-label="Width in millimeters"
+            />
+            <input
+              type="number"
+              value={height}
+              onChange={(e) => setHeight(e.target.value)}
+              placeholder="Height (mm)"
+              className={`p-3 rounded-lg text-black focus:outline-none ${!validDimension(height) && height ? "border-2 border-red-500" : "focus:ring-2 focus:ring-yellow-500"}`}
+              aria-label="Height in millimeters"
+            />
+            <input
+              type="number"
+              value={depth}
+              onChange={(e) => setDepth(e.target.value)}
+              placeholder="Depth (mm)"
+              className={`p-3 rounded-lg text-black focus:outline-none ${!validDimension(depth) && depth ? "border-2 border-red-500" : "focus:ring-2 focus:ring-yellow-500"}`}
+              aria-label="Depth in millimeters"
             />
           </div>
-          <div>
-            <label className="block text-sm font-medium mb-1" htmlFor="shellThickness">Shell Thickness (mm)</label>
+          <select
+            value={material}
+            onChange={(e) => setMaterial(e.target.value)}
+            className="w-full p-3 rounded-lg text-black focus:outline-none focus:ring-2 focus:ring-yellow-500"
+            aria-label="Material type"
+          >
+            <option value="plastic">Plastic (PLA/ABS)</option>
+            <option value="metal">Metal (Aluminum/Steel)</option>
+            <option value="resin">Resin (SLA)</option>
+            <option value="wood">Wood Composite</option>
+          </select>
+          <div className="grid grid-cols-2 gap-3">
             <input
-              id="shellThickness"
               type="number"
               value={shellThickness}
-              onChange={(e) => setShellThickness(Math.max(0.4, e.target.value))}
-              placeholder="Shell Thickness"
-              className="w-full p-3 rounded-lg text-black focus:outline-none focus:ring-2 focus:ring-yellow-500"
+              onChange={(e) => setShellThickness(e.target.value)}
+              placeholder="Shell Thickness (mm)"
+              className={`p-3 rounded-lg text-black focus:outline-none ${!validDimension(shellThickness) && shellThickness ? "border-2 border-red-500" : "focus:ring-2 focus:ring-yellow-500"}`}
               aria-label="Shell thickness in millimeters"
             />
+            <select
+              value={infill}
+              onChange={(e) => setInfill(e.target.value)}
+              className="p-3 rounded-lg text-black focus:outline-none focus:ring-2 focus:ring-yellow-500"
+              aria-label="Infill density"
+            >
+              <option value="10">10% Infill</option>
+              <option value="20">20% Infill</option>
+              <option value="50">50% Infill</option>
+              <option value="100">100% Infill</option>
+            </select>
           </div>
           <label className="flex items-center space-x-2">
             <input
               type="checkbox"
               checked={supports}
               onChange={(e) => setSupports(e.target.checked)}
-              className="h-5 w-5 text-yellow-500 focus:ring-yellow-500"
+              className="h-5 w-5 text-yellow-500"
               aria-label="Add print supports"
             />
             <span>Add Print Supports</span>
           </label>
           <div>
-            <label className="block text-sm font-medium mb-1" htmlFor="image">Upload Reference Image (Optional)</label>
-            <input
-              id="image"
-              type="file"
-              accept="image/*"
-              onChange={handleImageUpload}
-              className="w-full p-3 rounded-lg text-gray-400 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:bg-yellow-500 file:text-black file:font-semibold file:border-0 hover:file:bg-yellow-600"
+            <button
+              onClick={() => fileInputRef.current.click()}
+              className="w-full bg-gray-600 hover:bg-gray-700 text-white py-3 rounded-lg transition duration-200"
               aria-label="Upload reference image"
+            >
+              Upload Reference Image
+            </button>
+            <input
+              type="file"
+              ref={fileInputRef}
+              onChange={handleImageUpload}
+              accept="image/*"
+              className="hidden"
             />
+            {image && <p className="text-sm text-gray-400 mt-2">Image: {image.name}</p>}
           </div>
           <button
-            onClick={handleGenerate}
+            onClick={generateModel}
             disabled={isLoading}
-            className="w-full bg-blue-600 hover:bg-blue-700 text-white py-4 rounded-lg font-semibold transition duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
+            className="w-full bg-blue-600 hover:bg-blue-700 text-white py-3 rounded-lg font-semibold transition duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
             aria-label="Generate 3D model"
           >
             {isLoading ? (
@@ -423,7 +535,7 @@ function GeneratorSection({ generateModel, modelUrl, error, isLoading, userPlan 
               <p className="text-green-400">Model ready! Preview below.</p>
               <div className="flex gap-3">
                 <button
-                  onClick={() => generateModel({ download: true })}
+                  onClick={() => payForModel(userPlan === "pro" ? null : "price_1N9Z8z1234567890")}
                   className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg transition duration-200"
                   aria-label={userPlan === "pro" ? "Download free" : "Pay and download"}
                 >
@@ -456,141 +568,217 @@ function GeneratorSection({ generateModel, modelUrl, error, isLoading, userPlan 
                 camera-orbit="45deg 55deg 2m"
                 min-camera-orbit="auto 45deg 1m"
                 max-camera-orbit="auto 90deg 3m"
-                style={{ width: "100%", height: "500px", borderRadius: "8px" }}
-                loading="lazy"
+                style={{ width: "100%", height: "400px", borderRadius: "8px" }}
               />
             ) : (
               <div className="p-6 text-left text-gray-400">
                 <p className="mb-2">Your model preview will appear here.</p>
-                <p className="text-sm">Tip: Try "modular drone frame with aerodynamic curves, optimized for Bambu Lab X1 Carbon"</p>
+                <p className="text-sm">
+                  Tip: Try "intricate gearbox for Bambu Lab, high-precision interlocking gears"
+                </p>
               </div>
             )}
           </div>
           <div className="mt-4 text-left">
             <h4 className="text-xl font-semibold">AI Capabilities</h4>
             <ul className="list-disc ml-5 mt-2 text-sm space-y-1">
-              <li>Text-to-3D: Generate precise, print-ready models from detailed prompts</li>
-              <li>Image-to-3D: Convert reference images to 3D models (Pro plan)</li>
-              <li>Parametric Design: Customize material, infill, and shell thickness</li>
-              <li>Print Supports: Auto-generated supports for Bambu Lab compatibility</li>
-              <li>Export Formats: GLB, OBJ, STL for versatile use</li>
-              <li>AR/VR Ready: Preview in augmented reality with WebXR</li>
-              <li>Competition Optimized: High-resolution, complex geometries for Bambu Lab contests</li>
+              <li>Text-to-3D: Generate complex models from detailed prompts</li>
+              <li>Image-to-3D: Convert reference images to 3D models</li>
+              <li>High-Precision: Optimized for Bambu Lab tolerances (±0.1mm)</li>
+              <li>Custom Materials: Plastic, metal, resin, or wood composite</li>
+              <li>Print Supports: Auto-generated for stable printing</li>
+              <li>Shell & Infill: Adjustable for strength and weight</li>
+              <li>Export Formats: GLB, OBJ, STL for versatility</li>
+              <li>AR/VR Ready: Preview in augmented reality</li>
             </ul>
           </div>
         </div>
-      </div>
+      </motion.div>
     </section>
   );
-}
+};
 
-/**
- * Component: Gallery Section
- */
-function GallerySection({ setPrompt, setModelUrl }) {
-  return (
-    <section id="gallery" className="py-16 container mx-auto px-4">
-      <h2 className="text-4xl md:text-5xl font-bold text-center mb-8 text-transparent bg-clip-text bg-gradient-to-r from-yellow-400 to-purple-600">
-        Explore Competition-Winning Designs
-      </h2>
-      <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6">
-        {EXAMPLE_MODELS.map((model) => (
-          <div key={model.id} className="bg-gray-800 p-6 rounded-lg shadow-lg hover:shadow-xl transition duration-300">
-            <model-viewer
-              src={model.url}
-              alt={model.name}
-              camera-controls
-              auto-rotate
-              style={{ width: "100%", height: "250px", borderRadius: "8px" }}
-              shadow-intensity="1"
-              loading="lazy"
-            />
-            <h3 className="text-xl font-semibold mt-4">{model.name}</h3>
-            <p className="text-sm text-gray-400 mt-2">{model.desc}</p>
-            <div className="flex flex-wrap gap-2 mt-2">
-              {model.tags.map((tag) => (
-                <span key={tag} className="bg-gray-700 text-gray-300 text-xs px-2 py-1 rounded">{tag}</span>
-              ))}
+// Component: Example Models Gallery
+const ExampleModelsSection = ({ setPrompt, setModelUrl }) => (
+  <section className="py-16 container mx-auto px-4">
+    <motion.h2
+      initial={{ y: 50, opacity: 0 }}
+      whileInView={{ y: 0, opacity: 1 }}
+      transition={{ duration: 0.6 }}
+      className="text-4xl font-bold text-center mb-8"
+    >
+      Explore Competition-Worthy Models
+    </motion.h2>
+    <div className="grid md:grid-cols-3 gap-6">
+      {EXAMPLE_MODELS.map((model) => (
+        <motion.div
+          key={model.id}
+          initial={{ y: 50, opacity: 0 }}
+          whileInView={{ y: 0, opacity: 1 }}
+          transition={{ duration: 0.6, delay: model.id * 0.1 }}
+          className="bg-gray-800 p-6 rounded-lg shadow-lg hover:shadow-xl transition duration-300"
+        >
+          <model-viewer
+            src={model.url}
+            alt={model.name}
+            camera-controls
+            auto-rotate
+            style={{ width: "100%", height: "200px", borderRadius: "8px" }}
+            shadow-intensity="1"
+          />
+          <h3 className="text-xl font-semibold mt-4">{model.name}</h3>
+          <p className="text-sm text-gray-400 mt-2">{model.desc}</p>
+          <p className="text-sm text-gray-500 mt-1">Tags: {model.tags.join(", ")}</p>
+          <button
+            onClick={() => {
+              setPrompt(model.name);
+              setModelUrl(model.url);
+              window.scrollTo({ top: document.getElementById("generator").offsetTop, behavior: "smooth" });
+              trackEvent("Gallery", "TryModel", model.name);
+            }}
+            className="mt-4 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg transition duration-200"
+            aria-label={`Try ${model.name} model`}
+          >
+            Try This Model
+          </button>
+        </motion.div>
+      ))}
+    </div>
+  </section>
+);
+
+// Component: Subscription Plans
+const SubscriptionSection = ({ userPlan, payForModel }) => (
+  <section className="py-16 container mx-auto px-4">
+    <motion.h2
+      initial={{ y: 50, opacity: 0 }}
+      whileInView={{ y: 0, opacity: 1 }}
+      transition={{ duration: 0.6 }}
+      className="text-4xl font-bold text-center mb-8"
+    >
+      Choose Your Plan
+    </motion.h2>
+    <div className="grid md:grid-cols-3 gap-6">
+      {PLANS.map((plan) => (
+        <motion.div
+          key={plan.id}
+          initial={{ y: 50, opacity: 0 }}
+          whileInView={{ y: 0, opacity: 1 }}
+          transition={{ duration: 0.6 }}
+          className={`p-6 rounded-lg shadow-lg bg-gray-800 hover:shadow-xl transition duration-300 ${plan.id === userPlan ? "border-2 border-yellow-400" : ""}`}
+        >
+          <h3 className="text-2xl font-bold mb-2">{plan.title}</h3>
+          <p className="text-gray-300 mb-4">{plan.desc}</p>
+          <ul className="list-disc ml-5 mb-4 text-sm text-gray-400">
+            {plan.features.map((feature, index) => (
+              <li key={index}>{feature}</li>
+            ))}
+          </ul>
+          <div className="flex items-baseline justify-between">
+            <div>
+              <div className="text-xl font-semibold">{plan.priceLabel}</div>
+              <div className="text-sm text-gray-400">Billed monthly</div>
             </div>
             <button
-              onClick={() => {
-                setPrompt(model.name);
-                setModelUrl(model.url);
-                window.scrollTo({ top: document.getElementById("generator").offsetTop, behavior: "smooth" });
-                trackEvent("Gallery", "TryModel", model.name);
-              }}
-              className="mt-4 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg transition duration-200 w-full"
-              aria-label={`Try ${model.name}`}
+              onClick={() => payForModel(plan.priceId)}
+              disabled={plan.id === userPlan}
+              className={`${plan.color} hover:${plan.color.replace("bg-", "bg-opacity-80")} text-white px-4 py-2 rounded-lg font-semibold transition duration-200 disabled:opacity-50 disabled:cursor-not-allowed`}
+              aria-label={plan.id === userPlan ? "Current plan" : plan.cta}
             >
-              Try This Model
+              {plan.id === userPlan ? "Current Plan" : plan.cta}
             </button>
           </div>
-        ))}
-      </div>
-    </section>
-  );
-}
+        </motion.div>
+      ))}
+    </div>
+  </section>
+);
 
-/**
- * Component: Plans Section
- */
-function PlansSection({ payForModel, userPlan }) {
-  return (
-    <section id="plans" className="py-16 container mx-auto px-4">
-      <h2 className="text-4xl md:text-5xl font-bold text-center mb-8 text-transparent bg-clip-text bg-gradient-to-r from-yellow-400 to-purple-600">
-        Choose Your Plan
-      </h2>
-      <div className="grid md:grid-cols-3 gap-6">
-        {PLANS.map((plan) => (
-          <div
-            key={plan.id}
-            className={`p-6 rounded-lg shadow-lg bg-gray-800 hover:shadow-xl transition duration-300 ${plan.id === userPlan ? "border-4 border-yellow-400" : ""}`}
-          >
-            <h3 className="text-2xl font-bold mb-2">{plan.title}</h3>
-            <p className="text-gray-300 mb-4">{plan.desc}</p>
-            <div className="flex items-baseline justify-between">
-              <div>
-                <div className="text-xl font-semibold">{plan.priceLabel}</div>
-                <div className="text-sm text-gray-400">Billed monthly</div>
-              </div>
-              <button
-                onClick={() => payForModel(plan.priceId)}
-                disabled={plan.id === userPlan}
-                className={`${plan.color} hover:${plan.color.replace("bg-", "bg-opacity-80")} text-white px-4 py-2 rounded-lg font-semibold transition duration-200 disabled:opacity-50 disabled:cursor-not-allowed`}
-                aria-label={plan.id === userPlan ? "Current plan" : plan.cta}
-              >
-                {plan.id === userPlan ? "Current Plan" : plan.cta}
-              </button>
-            </div>
+// Component: Stripe Modal
+const StripeModal = ({ show, onClose }) => (
+  <AnimatePresence>
+    {show && (
+      <motion.div
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        exit={{ opacity: 0 }}
+        className="fixed inset-0 z-50 bg-black bg-opacity-70 flex items-center justify-center"
+      >
+        <motion.div
+          initial={{ scale: 0.8, opacity: 0 }}
+          animate={{ scale: 1, opacity: 1 }}
+          exit={{ scale: 0.8, opacity: 0 }}
+          className="bg-gray-800 p-8 rounded-xl w-full max-w-md shadow-2xl"
+        >
+          <h3 className="text-xl font-bold mb-4">Payment Processing</h3>
+          <p className="text-sm text-gray-300 mb-4">
+            You will be redirected to Stripe's secure checkout page to complete your purchase.
+          </p>
+          <div className="flex justify-end gap-3">
+            <button
+              onClick={onClose}
+              className="bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded-lg"
+              aria-label="Close payment modal"
+            >
+              Close
+            </button>
           </div>
-        ))}
-      </div>
-    </section>
-  );
-}
+        </motion.div>
+      </motion.div>
+    )}
+  </AnimatePresence>
+);
 
-/**
- * Main App Component
- */
+// Component: Footer
+const Footer = () => (
+  <footer className="py-12 bg-gray-900 text-center text-gray-400">
+    <div className="container mx-auto px-4">
+      <p>&copy; {new Date().getFullYear()} 3D Model Magic. All rights reserved.</p>
+      <div className="mt-4 space-x-4">
+        <a href="/terms" className="hover:text-yellow-400 transition duration-200" aria-label="Terms of Service">
+          Terms of Service
+        </a>
+        <a href="/privacy" className="hover:text-yellow-400 transition duration-200" aria-label="Privacy Policy">
+          Privacy Policy
+        </a>
+        <a href="/contact" className="hover:text-yellow-400 transition duration-200" aria-label="Contact Us">
+          Contact Us
+        </a>
+      </div>
+    </div>
+  </footer>
+);
+
+// Main App Component
 function App() {
-  const [user, setUser] = useState(null);
-  const [userPlan, setUserPlan] = useState("free");
+  // State management
+  const [prompt, setPrompt] = useState("");
+  const [width, setWidth] = useState("");
+  const [height, setHeight] = useState("");
+  const [depth, setDepth] = useState("");
+  const [material, setMaterial] = useState("plastic");
+  const [supports, setSupports] = useState(false);
+  const [shellThickness, setShellThickness] = useState("");
+  const [infill, setInfill] = useState("20");
+  const [image, setImage] = useState(null);
+  const [isLoading, setIsLoading] = useState(false);
   const [modelUrl, setModelUrl] = useState(null);
   const [error, setError] = useState("");
-  const [isLoading, setIsLoading] = useState(false);
+  const [user, setUser] = useState(null);
+  const [userPlan, setUserPlan] = useState("free");
   const [showSignUp, setShowSignUp] = useState(false);
   const [showSignIn, setShowSignIn] = useState(false);
   const [showStripeModal, setShowStripeModal] = useState(false);
-  const generatorRef = useRef(null);
 
   // Firebase auth state
   useEffect(() => {
-    const unsubscribe = firebase.auth().onAuthStateChanged(async (u) => {
+    const unsubscribe = firebase.auth().onAuthStateChanged((u) => {
       if (u) {
         setUser({ email: u.email, uid: u.uid });
-        const plan = await fetchUserPlan(u.uid);
-        setUserPlan(plan || "free");
-        trackEvent("Auth", "SignIn", u.email);
+        fetchUserPlan(u.uid).then((plan) => {
+          setUserPlan(plan || "free");
+          trackEvent("Auth", "SignIn", u.email);
+        });
       } else {
         setUser(null);
         setUserPlan("free");
@@ -599,7 +787,7 @@ function App() {
     return () => unsubscribe();
   }, []);
 
-  // Fetch user plan
+  // Fetch user plan from backend
   async function fetchUserPlan(uid) {
     try {
       const resp = await fetch(`/.netlify/functions/get-user-plan?uid=${uid}`, {
@@ -609,6 +797,7 @@ function App() {
       return data.plan;
     } catch (err) {
       console.error("Failed to fetch user plan:", err);
+      toast.error("Error fetching plan. Defaulting to Free.");
       return "free";
     }
   }
@@ -620,13 +809,13 @@ function App() {
       const data = await resp.json();
       return data.token;
     } catch (err) {
-      console.error("CSRF token fetch failed:", err);
+      console.error("CSRF token error:", err);
       return "";
     }
   }
 
-  // Generate model
-  async function generateModel({ prompt, width, height, depth, material, supports, infill, shellThickness, image, download = false }) {
+  // Generate 3D model
+  async function generateModel() {
     setError("");
     const sanitizedPrompt = sanitizeInput(prompt.trim());
     if (!sanitizedPrompt && !image) {
@@ -639,42 +828,38 @@ function App() {
       toast.error("Invalid dimensions.");
       return;
     }
-    if (infill < 0 || infill > 100) {
-      setError("Infill must be between 0 and 100%.");
-      toast.error("Invalid infill percentage.");
-      return;
-    }
-    if (shellThickness < 0.4) {
-      setError("Shell thickness must be at least 0.4mm.");
+    if (!validDimension(shellThickness) && shellThickness) {
+      setError("Enter valid shell thickness in millimeters (number > 0).");
       toast.error("Invalid shell thickness.");
       return;
     }
 
     setIsLoading(true);
     setModelUrl(null);
-    trackEvent("Generator", "GenerateAttempt", sanitizedPrompt || "image-based");
+    trackEvent("Model", "GenerateAttempt", sanitizedPrompt || "Image-based");
 
     try {
       const BACKEND = window.__BACKEND_URL__ || "/.netlify/functions/generate";
-      const payload = {
-        prompt: sanitizedPrompt,
-        measurements: { width: Number(width), height: Number(height), depth: Number(depth) },
-        material,
-        supports,
-        infill: Number(infill),
-        shellThickness: Number(shellThickness),
-        image,
-        userId: user?.uid || null,
-        format: download ? "stl" : "glb", // STL for downloads, GLB for previews
-      };
+      const formData = new FormData();
+      formData.append("prompt", sanitizedPrompt);
+      formData.append("measurements", JSON.stringify({
+        width: Number(width),
+        height: Number(height),
+        depth: Number(depth)
+      }));
+      formData.append("material", material);
+      formData.append("supports", supports);
+      formData.append("shellThickness", Number(shellThickness) || 1);
+      formData.append("infill", Number(infill));
+      formData.append("userId", user?.uid || null);
+      if (image) {
+        formData.append("image", image);
+      }
 
       const resp = await fetch(BACKEND, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "X-CSRF-Token": await getCsrfToken()
-        },
-        body: JSON.stringify(payload),
+        headers: { "X-CSRF-Token": await getCsrfToken() },
+        body: formData
       });
 
       if (!resp.ok) {
@@ -696,11 +881,8 @@ function App() {
 
       if (data?.modelUrl) {
         setModelUrl(data.modelUrl);
-        toast.success(download ? "Model downloaded!" : "Model generated!");
-        trackEvent("Generator", download ? "DownloadSuccess" : "GenerateSuccess", sanitizedPrompt || "image-based");
-        if (download && userPlan !== "pro") {
-          await payForModel("price_1N9Z8z1234567890"); // One-time purchase
-        }
+        toast.success("Model generated successfully!");
+        trackEvent("Model", "GenerateSuccess", sanitizedPrompt || "Image-based");
       } else {
         setError("No model URL returned. Showing placeholder.");
         toast.error("No model URL. Showing placeholder.");
@@ -709,7 +891,7 @@ function App() {
     } catch (err) {
       console.error(err);
       setError("Network error. Using placeholder preview.");
-      toast.error("Network error.");
+      toast.error("Network error. Check console.");
       setModelUrl("https://modelviewer.dev/shared-assets/models/Astronaut.glb");
     } finally {
       setIsLoading(false);
@@ -719,12 +901,12 @@ function App() {
   // Initiate Stripe checkout
   async function payForModel(priceId) {
     setError("");
-    if (!priceId) {
+    if (!priceId && userPlan !== "pro") {
       setError("This plan is included by default.");
-      toast.info("Free plan active.");
+      toast.info("Free plan is active.");
       return;
     }
-    if (priceId.startsWith("price_") && !modelUrl && !priceId.includes("sub")) {
+    if (priceId && !modelUrl) {
       setError("Generate a model first before purchasing.");
       toast.error("Generate a model first.");
       return;
@@ -745,25 +927,25 @@ function App() {
           "X-CSRF-Token": await getCsrfToken()
         },
         body: JSON.stringify({
-          priceId,
+          priceId: priceId || "free-download",
           modelUrl: modelUrl || "subscription",
-          userId: user.uid,
-        }),
+          userId: user.uid
+        })
       });
 
       const data = await resp.json();
       if (data.url) {
         window.location.href = data.url;
-        trackEvent("Payment", "CheckoutInitiated", priceId);
+        trackEvent("Payment", "CheckoutInitiated", priceId || "free-download");
       } else {
         setError("Failed to initiate checkout.");
         toast.error("Checkout initiation failed.");
-        setShowStripeModal(false);
       }
     } catch (err) {
       console.error(err);
       setError("Checkout error. Please try again.");
       toast.error("Checkout error.");
+    } finally {
       setShowStripeModal(false);
     }
   }
@@ -812,79 +994,68 @@ function App() {
     trackEvent("Auth", "SignOut", user?.email);
   }
 
-  // Scroll to generator
-  const scrollToGenerator = () => {
-    window.scrollTo({ top: generatorRef.current.offsetTop, behavior: "smooth" });
-  };
-
   return (
     <div className="min-h-screen bg-gradient-to-b from-gray-900 to-gray-800 text-white">
-      <ToastContainer position="top-right" autoClose={3000} hideProgressBar={false} closeOnClick draggable pauseOnHover theme="dark" />
-      <HeroSection scrollToGenerator={scrollToGenerator} />
+      <ToastContainer position="top-right" autoClose={3000} hideProgressBar />
       <Header
         user={user}
         userPlan={userPlan}
-        signOut={signOut}
         setShowSignUp={setShowSignUp}
         setShowSignIn={setShowSignIn}
+        signOut={signOut}
       />
-      {showSignUp && (
-        <AuthModal
-          type="signup"
-          onClose={() => setShowSignUp(false)}
-          onSubmit={handleSignUpSubmit}
-        />
-      )}
-      {showSignIn && (
-        <AuthModal
-          type="signin"
-          onClose={() => setShowSignIn(false)}
-          onSubmit={handleSignInSubmit}
-        />
-      )}
-      <div ref={generatorRef}>
-        <GeneratorSection
-          generateModel={generateModel}
-          modelUrl={modelUrl}
-          error={error}
-          isLoading={isLoading}
-          userPlan={userPlan}
-        />
-      </div>
-      <GallerySection setPrompt={(p) => generateModel({ prompt: p })} setModelUrl={setModelUrl} />
-      <PlansSection payForModel={payForModel} userPlan={userPlan} />
-      {showStripeModal && (
-        <div className="fixed inset-0 z-50 bg-black bg-opacity-70 flex items-center justify-center">
-          <div className="bg-gray-800 p-8 rounded-xl w-full max-w-md shadow-2xl">
-            <h3 className="text-xl font-bold mb-4">Payment Processing</h3>
-            <p className="text-sm text-gray-300 mb-4">
-              Redirecting to Stripe's secure checkout page...
-            </p>
-            <div className="flex justify-end gap-3">
-              <button
-                onClick={() => setShowStripeModal(false)}
-                className="bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded-lg"
-                aria-label="Close payment modal"
-              >
-                Close
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-      <footer className="py-12 bg-gray-900 text-center text-gray-400">
-        <div className="container mx-auto px-4">
-          <p>&copy; {new Date().getFullYear()} 3D Model Magic. All rights reserved.</p>
-          <div className="mt-4 space-x-4">
-            <a href="/terms" className="hover:text-yellow-400 transition duration-200">Terms of Service</a>
-            <a href="/privacy" className="hover:text-yellow-400 transition duration-200">Privacy Policy</a>
-            <a href="/contact" className="hover:text-yellow-400 transition duration-200">Contact Us</a>
-            <a href="https://bambulab.com" className="hover:text-yellow-400 transition duration-200">Bambu Lab</a>
-          </div>
-        </div>
-      </footer>
+      <HeroSection />
+      <GeneratorSection
+        prompt={prompt}
+        setPrompt={setPrompt}
+        width={width}
+        setWidth={setWidth}
+        height={height}
+        setHeight={setHeight}
+        depth={depth}
+        setDepth={setDepth}
+        material={material}
+        setMaterial={setMaterial}
+        supports={supports}
+        setSupports={setSupports}
+        shellThickness={shellThickness}
+        setShellThickness={setShellThickness}
+        infill={infill}
+        setInfill={setInfill}
+        image={image}
+        setImage={setImage}
+        isLoading={isLoading}
+        modelUrl={modelUrl}
+        error={error}
+        generateModel={generateModel}
+        payForModel={payForModel}
+        userPlan={userPlan}
+      />
+      <ExampleModelsSection setPrompt={setPrompt} setModelUrl={setModelUrl} />
+      <SubscriptionSection userPlan={userPlan} payForModel={payForModel} />
+      <StripeModal show={showStripeModal} onClose={() => setShowStripeModal(false)} />
+      <AuthModal
+        show={showSignUp}
+        onClose={() => setShowSignUp(false)}
+        onSubmit={handleSignUpSubmit}
+        title="Sign Up"
+        buttonText="Sign Up"
+        buttonColor="bg-blue-600"
+      />
+      <AuthModal
+        show={showSignIn}
+        onClose={() => setShowSignIn(false)}
+        onSubmit={handleSignInSubmit}
+        title="Sign In"
+        buttonText="Sign In"
+        buttonColor="bg-green-600"
+      />
+      <Footer />
     </div>
   );
 }
 
-ReactDOM.render(<App />, document.getElementById("root"));
+// Render the app
+const rootElement = document.getElementById('root');
+const root = createRoot(rootElement);
+root.render(<App />);
